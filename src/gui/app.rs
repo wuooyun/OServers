@@ -183,11 +183,12 @@ impl OServersApp {
                     std::sync::Arc::new(egui::FontData::from_owned(font_data)),
                 );
                 
-                // Add to proportional fonts (used for UI text)
+                // Add Chinese font as FALLBACK (push to end, not insert at 0)
+                // This way the default font handles emojis, Chinese font handles CJK characters
                 fonts.families
                     .entry(egui::FontFamily::Proportional)
                     .or_default()
-                    .insert(0, "chinese_font".to_owned());
+                    .push("chinese_font".to_owned());
                 
                 // Add to monospace fonts (used for code/logs)
                 fonts.families
@@ -337,16 +338,23 @@ impl eframe::App for OServersApp {
                     let is_selected = self.selected_server == Some(idx);
                     let status = entry.status();
                     
-                    let status_icon = match &status {
-                        ServerStatus::Stopped => "⬜",
-                        ServerStatus::Starting => "🟡",
-                        ServerStatus::Running => "🟢",
-                        ServerStatus::Stopping => "🟠",
-                        ServerStatus::Error(_) => "🔴",
+                    // Use colored circles instead of emoji for reliable display
+                    let status_color = match &status {
+                        ServerStatus::Stopped => egui::Color32::GRAY,
+                        ServerStatus::Starting => egui::Color32::YELLOW,
+                        ServerStatus::Running => egui::Color32::GREEN,
+                        ServerStatus::Stopping => egui::Color32::from_rgb(255, 165, 0), // Orange
+                        ServerStatus::Error(_) => egui::Color32::RED,
                     };
 
                     ui.horizontal(|ui| {
-                        ui.label(status_icon);
+                        // Draw a colored circle as status indicator
+                        let (rect, _response) = ui.allocate_exact_size(
+                            egui::vec2(16.0, 16.0),
+                            egui::Sense::hover()
+                        );
+                        let center = rect.center();
+                        ui.painter().circle_filled(center, 6.0, status_color);
                         
                         if ui.selectable_label(is_selected, entry.server_type.name()).clicked() {
                             self.selected_server = Some(idx);
