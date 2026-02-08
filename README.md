@@ -15,6 +15,9 @@ A multi-protocol server management application with a unified GUI interface, sim
 
 All servers can be managed through a modern, native GUI built with [egui](https://github.com/emilk/egui).
 
+<img width="794" height="623" alt="image" src="https://github.com/user-attachments/assets/0f79bd34-05d5-46bc-8625-cd7a0bebd3c2" />
+
+
 ## 📦 Installation
 
 ### Pre-built Binaries
@@ -46,6 +49,8 @@ The GUI will launch, allowing you to:
 1. Configure each server's port and root directory
 2. Start/stop servers individually
 3. Monitor active connections
+4. Demo
+  <img width="794" height="623" alt="image" src="https://github.com/user-attachments/assets/358de501-1414-4042-996e-0306ab6731db" />
 
 ## 🛠️ Development
 
