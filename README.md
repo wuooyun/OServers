@@ -15,8 +15,6 @@ A multi-protocol server management application with a unified GUI interface, sim
 
 All servers can be managed through a modern, native GUI built with [egui](https://github.com/emilk/egui).
 
-<img width="794" height="623" alt="image" src="https://github.com/user-attachments/assets/0f79bd34-05d5-46bc-8625-cd7a0bebd3c2" />
-
 
 ## 📦 Installation
 
