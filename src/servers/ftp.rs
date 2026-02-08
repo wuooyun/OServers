@@ -2,6 +2,7 @@
 
 use super::{LogMessage, ServerConfig, ServerError, ServerHandle, ServerStatus, SharedState};
 use libunftp::auth::DefaultUser;
+use libunftp::options::ActivePassiveMode;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -99,10 +100,18 @@ pub async fn start_server(
         allow_anonymous: config.anonymous_access,
     };
 
-    // Build server
+    // Determine transfer mode
+    let transfer_mode = if config.passive_mode {
+        ActivePassiveMode::ActiveAndPassive
+    } else {
+        ActivePassiveMode::ActiveOnly
+    };
+
+    // Build server with transfer mode
     let server = libunftp::Server::with_fs(root.clone())
         .authenticator(Arc::new(authenticator))
-        .passive_ports(config.passive_ports.0..config.passive_ports.1)
+        .passive_ports(config.passive_ports.0..=config.passive_ports.1)
+        .active_passive_mode(transfer_mode)
         .build()
         .map_err(|e| ServerError::Other(e.to_string()))?;
 
@@ -123,15 +132,14 @@ pub async fn start_server(
         if config.anonymous_access {
             s.add_log(LogMessage::info("Anonymous access: enabled"));
         }
+        let mode_desc = match transfer_mode {
+            ActivePassiveMode::ActiveAndPassive => "Active + Passive",
+            ActivePassiveMode::PassiveOnly => "Passive only",
+            ActivePassiveMode::ActiveOnly => "Active only",
+        };
         s.add_log(LogMessage::info(format!(
-            "Mode: {} (passive ports: {}-{})",
-            if config.passive_mode {
-                "Passive"
-            } else {
-                "Active"
-            },
-            config.passive_ports.0,
-            config.passive_ports.1
+            "Transfer mode: {} (passive ports: {}-{})",
+            mode_desc, config.passive_ports.0, config.passive_ports.1
         )));
     }
 

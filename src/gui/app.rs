@@ -512,8 +512,9 @@ impl eframe::App for OServersApp {
                                         ui.horizontal(|ui| {
                                             ui.checkbox(
                                                 &mut self.ftp_passive_mode,
-                                                "Passive mode (recommended)",
+                                                "Enable passive mode (PASV)",
                                             );
+                                            ui.label("(Active mode PORT always enabled)");
                                         });
                                         ui.end_row();
 

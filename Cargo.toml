@@ -1,7 +1,7 @@
 [package]
 name = "oservers"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [dependencies]
@@ -17,8 +17,8 @@ tokio = { version = "1", features = ["full"] }
 warp = "0.3"
 
 # FTP Server
-libunftp = "0.20"
-unftp-sbe-fs = "0.2"
+libunftp = "=0.21.0"
+unftp-sbe-fs = "0.3"
 
 # TFTP
 async-tftp = "0.3"
