@@ -45,7 +45,10 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Starting;
-        s.add_log(LogMessage::info(format!("Starting TFTP server on port {}...", port)));
+        s.add_log(LogMessage::info(format!(
+            "Starting TFTP server on port {}...",
+            port
+        )));
     }
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
@@ -66,7 +69,10 @@ pub async fn start_server(
                             "TFTP server started on tftp://0.0.0.0:{}",
                             port
                         )));
-                        s.add_log(LogMessage::info(format!("Root directory: {}", root.display())));
+                        s.add_log(LogMessage::info(format!(
+                            "Root directory: {}",
+                            root.display()
+                        )));
                         s.add_log(LogMessage::info(format!(
                             "Mode: {}",
                             if config.read_only {
@@ -95,7 +101,10 @@ pub async fn start_server(
                 Err(e) => {
                     let mut s = state.write();
                     s.status = ServerStatus::Error(e.to_string());
-                    s.add_log(LogMessage::error(format!("Failed to build TFTP server: {}", e)));
+                    s.add_log(LogMessage::error(format!(
+                        "Failed to build TFTP server: {}",
+                        e
+                    )));
                     return Err(ServerError::Other(e.to_string()));
                 }
             }
@@ -103,7 +112,10 @@ pub async fn start_server(
         Err(e) => {
             let mut s = state.write();
             s.status = ServerStatus::Error(e.to_string());
-            s.add_log(LogMessage::error(format!("Failed to create TFTP server: {}", e)));
+            s.add_log(LogMessage::error(format!(
+                "Failed to create TFTP server: {}",
+                e
+            )));
             return Err(ServerError::Other(e.to_string()));
         }
     }
@@ -119,6 +131,7 @@ pub async fn start_server(
 }
 
 /// Create a new TFTP server handle
+#[allow(dead_code)]
 pub fn create_handle(config: TftpConfig) -> ServerHandle {
     ServerHandle::new(config.into())
 }

@@ -1,5 +1,5 @@
 //! OServers - Multi-server management application
-//! 
+//!
 //! A Rust implementation of server management similar to MobaXterm's servers feature.
 //! Supports HTTP, FTP, TFTP, and SSH servers with a unified GUI interface.
 
@@ -41,7 +41,7 @@ fn load_icon() -> egui::IconData {
     // Simple default icon - could be replaced with a custom icon
     let size = 32;
     let mut pixels = vec![0u8; size * size * 4];
-    
+
     // Create a simple blue circle icon
     for y in 0..size {
         for x in 0..size {
@@ -49,10 +49,10 @@ fn load_icon() -> egui::IconData {
             let dx = x as f32 - size as f32 / 2.0;
             let dy = y as f32 - size as f32 / 2.0;
             let dist = (dx * dx + dy * dy).sqrt();
-            
+
             if dist < size as f32 / 2.0 - 2.0 {
                 // Inside circle - blue color
-                pixels[idx] = 66;     // R
+                pixels[idx] = 66; // R
                 pixels[idx + 1] = 133; // G
                 pixels[idx + 2] = 244; // B
                 pixels[idx + 3] = 255; // A
@@ -65,7 +65,7 @@ fn load_icon() -> egui::IconData {
             }
         }
     }
-    
+
     egui::IconData {
         rgba: pixels,
         width: size as u32,

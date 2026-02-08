@@ -39,7 +39,7 @@ impl From<HttpConfig> for ServerConfig {
 /// Generate HTML for directory listing
 fn generate_directory_listing(path: &std::path::Path, request_path: &str) -> Option<String> {
     let entries = std::fs::read_dir(path).ok()?;
-    
+
     let mut html = format!(
         r#"<!DOCTYPE html>
 <html>
@@ -75,9 +75,7 @@ fn generate_directory_listing(path: &std::path::Path, request_path: &str) -> Opt
     }
 
     // Collect and sort entries
-    let mut items: Vec<_> = entries
-        .filter_map(|e| e.ok())
-        .collect();
+    let mut items: Vec<_> = entries.filter_map(|e| e.ok()).collect();
     items.sort_by(|a, b| {
         let a_is_dir = a.path().is_dir();
         let b_is_dir = b.path().is_dir();
@@ -93,7 +91,7 @@ fn generate_directory_listing(path: &std::path::Path, request_path: &str) -> Opt
         let file_name_str = file_name.to_string_lossy();
         let entry_path = entry.path();
         let is_dir = entry_path.is_dir();
-        
+
         let (icon, href, size_str) = if is_dir {
             ("📂", format!("{}/", file_name_str), "-".to_string())
         } else {
@@ -102,7 +100,8 @@ fn generate_directory_listing(path: &std::path::Path, request_path: &str) -> Opt
             ("📄", file_name_str.to_string(), size_str)
         };
 
-        let modified = entry.metadata()
+        let modified = entry
+            .metadata()
             .and_then(|m| m.modified())
             .map(|t| {
                 let datetime: chrono::DateTime<chrono::Local> = t.into();
@@ -117,10 +116,12 @@ fn generate_directory_listing(path: &std::path::Path, request_path: &str) -> Opt
         ));
     }
 
-    html.push_str(r#"    </table>
+    html.push_str(
+        r#"    </table>
     <p style="color:#888;margin-top:20px;font-size:12px;">OServers HTTP Server</p>
 </body>
-</html>"#);
+</html>"#,
+    );
 
     Some(html)
 }
@@ -156,41 +157,47 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Starting;
-        s.add_log(LogMessage::info(format!("Starting HTTP server on port {}...", port)));
+        s.add_log(LogMessage::info(format!(
+            "Starting HTTP server on port {}...",
+            port
+        )));
     }
 
     // Clone root for use in filters
     let root_for_listing = root.clone();
-    
+
     // Directory listing handler
     let listing_root = root.clone();
-    let dir_listing = warp::path::tail()
-        .and(warp::get())
-        .and_then(move |tail: warp::path::Tail| {
-            let root = listing_root.clone();
-            let allow = allow_listing;
-            async move {
-                let request_path = format!("/{}", tail.as_str());
-                let full_path = root.join(tail.as_str());
-                
-                // Check if it's a directory
-                if full_path.is_dir() {
-                    // Check for index.html first
-                    let index_path = full_path.join("index.html");
-                    if index_path.exists() {
-                        // Let the file server handle index.html
-                        return Err(warp::reject::not_found());
-                    }
-                    
-                    if allow {
-                        if let Some(html) = generate_directory_listing(&full_path, &request_path) {
-                            return Ok(warp::reply::html(html));
+    let dir_listing =
+        warp::path::tail()
+            .and(warp::get())
+            .and_then(move |tail: warp::path::Tail| {
+                let root = listing_root.clone();
+                let allow = allow_listing;
+                async move {
+                    let request_path = format!("/{}", tail.as_str());
+                    let full_path = root.join(tail.as_str());
+
+                    // Check if it's a directory
+                    if full_path.is_dir() {
+                        // Check for index.html first
+                        let index_path = full_path.join("index.html");
+                        if index_path.exists() {
+                            // Let the file server handle index.html
+                            return Err(warp::reject::not_found());
+                        }
+
+                        if allow {
+                            if let Some(html) =
+                                generate_directory_listing(&full_path, &request_path)
+                            {
+                                return Ok(warp::reply::html(html));
+                            }
                         }
                     }
+                    Err(warp::reject::not_found())
                 }
-                Err(warp::reject::not_found())
-            }
-        });
+            });
 
     // Serve files
     let files = warp::fs::dir(root_for_listing);
@@ -217,8 +224,14 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Running;
-        s.add_log(LogMessage::info(format!("HTTP server started on http://0.0.0.0:{}", port)));
-        s.add_log(LogMessage::info(format!("Serving files from: {}", root.display())));
+        s.add_log(LogMessage::info(format!(
+            "HTTP server started on http://0.0.0.0:{}",
+            port
+        )));
+        s.add_log(LogMessage::info(format!(
+            "Serving files from: {}",
+            root.display()
+        )));
         if allow_listing {
             s.add_log(LogMessage::info("Directory listing: enabled"));
         }
@@ -257,6 +270,7 @@ pub async fn start_server(
 }
 
 /// Create a new HTTP server handle
+#[allow(dead_code)]
 pub fn create_handle(config: HttpConfig) -> ServerHandle {
     ServerHandle::new(config.into())
 }

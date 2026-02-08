@@ -5,23 +5,12 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// Main application configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     pub http: HttpConfig,
     pub ftp: FtpConfig,
     pub tftp: TftpConfig,
     pub ssh: SshConfig,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            http: HttpConfig::default(),
-            ftp: FtpConfig::default(),
-            tftp: TftpConfig::default(),
-            ssh: SshConfig::default(),
-        }
-    }
 }
 
 impl AppConfig {

@@ -5,13 +5,14 @@ pub mod http;
 pub mod ssh;
 pub mod tftp;
 
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 /// Server error types
+#[allow(dead_code)]
 #[derive(Error, Debug)]
 pub enum ServerError {
     #[error("Server already running")]
@@ -44,6 +45,7 @@ pub struct LogMessage {
     pub message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LogLevel {
     Info,
@@ -88,6 +90,7 @@ impl Default for ServerConfig {
 }
 
 /// Shared server state
+#[allow(dead_code)]
 pub struct ServerState {
     pub status: ServerStatus,
     pub logs: Vec<LogMessage>,
@@ -115,12 +118,14 @@ impl ServerState {
 pub type SharedState = Arc<RwLock<ServerState>>;
 
 /// Server control handle
+#[allow(dead_code)]
 pub struct ServerHandle {
     pub state: SharedState,
     shutdown_tx: Option<mpsc::Sender<()>>,
 }
 
 impl ServerHandle {
+    #[allow(dead_code)]
     pub fn new(config: ServerConfig) -> Self {
         Self {
             state: Arc::new(RwLock::new(ServerState::new(config))),
@@ -128,10 +133,12 @@ impl ServerHandle {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_shutdown_tx(&mut self, tx: mpsc::Sender<()>) {
         self.shutdown_tx = Some(tx);
     }
 
+    #[allow(dead_code)]
     pub fn request_shutdown(&self) -> bool {
         if let Some(tx) = &self.shutdown_tx {
             tx.try_send(()).is_ok()
@@ -140,10 +147,12 @@ impl ServerHandle {
         }
     }
 
+    #[allow(dead_code)]
     pub fn status(&self) -> ServerStatus {
         self.state.read().status.clone()
     }
 
+    #[allow(dead_code)]
     pub fn is_running(&self) -> bool {
         matches!(self.state.read().status, ServerStatus::Running)
     }

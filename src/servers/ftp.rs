@@ -86,7 +86,10 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Starting;
-        s.add_log(LogMessage::info(format!("Starting FTP server on port {}...", port)));
+        s.add_log(LogMessage::info(format!(
+            "Starting FTP server on port {}...",
+            port
+        )));
     }
 
     // Create authenticator
@@ -109,14 +112,24 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Running;
-        s.add_log(LogMessage::info(format!("FTP server started on ftp://0.0.0.0:{}", port)));
-        s.add_log(LogMessage::info(format!("Root directory: {}", root.display())));
+        s.add_log(LogMessage::info(format!(
+            "FTP server started on ftp://0.0.0.0:{}",
+            port
+        )));
+        s.add_log(LogMessage::info(format!(
+            "Root directory: {}",
+            root.display()
+        )));
         if config.anonymous_access {
             s.add_log(LogMessage::info("Anonymous access: enabled"));
         }
         s.add_log(LogMessage::info(format!(
             "Mode: {} (passive ports: {}-{})",
-            if config.passive_mode { "Passive" } else { "Active" },
+            if config.passive_mode {
+                "Passive"
+            } else {
+                "Active"
+            },
             config.passive_ports.0,
             config.passive_ports.1
         )));
@@ -148,6 +161,7 @@ pub async fn start_server(
 }
 
 /// Create a new FTP server handle
+#[allow(dead_code)]
 pub fn create_handle(config: FtpConfig) -> ServerHandle {
     ServerHandle::new(config.into())
 }

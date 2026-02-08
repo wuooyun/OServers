@@ -48,7 +48,10 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Starting;
-        s.add_log(LogMessage::info(format!("Starting SSH server on port {}...", port)));
+        s.add_log(LogMessage::info(format!(
+            "Starting SSH server on port {}...",
+            port
+        )));
     }
 
     // For now, we'll just mark it as running and wait for shutdown
@@ -56,8 +59,14 @@ pub async fn start_server(
     {
         let mut s = state.write();
         s.status = ServerStatus::Running;
-        s.add_log(LogMessage::info(format!("SSH server started on port {}", port)));
-        s.add_log(LogMessage::info(format!("Root directory: {}", config.root_dir.display())));
+        s.add_log(LogMessage::info(format!(
+            "SSH server started on port {}",
+            port
+        )));
+        s.add_log(LogMessage::info(format!(
+            "Root directory: {}",
+            config.root_dir.display()
+        )));
         s.add_log(LogMessage::info("Note: SSH server is in simplified mode"));
     }
 
@@ -75,6 +84,7 @@ pub async fn start_server(
 }
 
 /// Create a new SSH server handle
+#[allow(dead_code)]
 pub fn create_handle(config: SshConfig) -> ServerHandle {
     ServerHandle::new(config.into())
 }

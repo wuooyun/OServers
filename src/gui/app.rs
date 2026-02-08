@@ -9,9 +9,9 @@ use crate::servers::{
     LogLevel, LogMessage, ServerStatus, SharedState,
 };
 use eframe::egui;
+use parking_lot::RwLock;
 use std::path::PathBuf;
 use std::sync::Arc;
-use parking_lot::RwLock;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
@@ -91,14 +91,14 @@ pub struct OServersApp {
     servers: Vec<ServerEntry>,
     selected_server: Option<usize>,
     runtime: Arc<Runtime>,
-    
+
     // Temporary UI state for editing
     http_port: String,
     http_root_dir: String,
     http_allow_listing: bool,
     http_auto_stop: bool,
     http_auto_stop_secs: String,
-    
+
     ftp_port: String,
     ftp_root_dir: String,
     ftp_username: String,
@@ -107,11 +107,11 @@ pub struct OServersApp {
     ftp_passive_mode: bool,
     ftp_passive_ports_start: String,
     ftp_passive_ports_end: String,
-    
+
     tftp_port: String,
     tftp_root_dir: String,
     tftp_read_only: bool,
-    
+
     ssh_port: String,
     ssh_root_dir: String,
     ssh_username: String,
@@ -122,15 +122,14 @@ impl OServersApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // Configure Chinese font support
         Self::setup_fonts(&cc.egui_ctx);
-        
+
         let config = AppConfig::load();
         let runtime = Arc::new(Runtime::new().expect("Failed to create tokio runtime"));
-        
+
         let servers = ServerType::ALL
             .iter()
             .map(|&st| ServerEntry::new(st))
             .collect();
-
 
         Self {
             http_port: config.http.port.to_string(),
@@ -138,7 +137,7 @@ impl OServersApp {
             http_allow_listing: config.http.allow_directory_listing,
             http_auto_stop: config.http.auto_stop_seconds.is_some(),
             http_auto_stop_secs: config.http.auto_stop_seconds.unwrap_or(360).to_string(),
-            
+
             ftp_port: config.ftp.port.to_string(),
             ftp_root_dir: config.ftp.root_dir.display().to_string(),
             ftp_username: config.ftp.username.clone(),
@@ -147,16 +146,16 @@ impl OServersApp {
             ftp_passive_mode: config.ftp.passive_mode,
             ftp_passive_ports_start: config.ftp.passive_ports.0.to_string(),
             ftp_passive_ports_end: config.ftp.passive_ports.1.to_string(),
-            
+
             tftp_port: config.tftp.port.to_string(),
             tftp_root_dir: config.tftp.root_dir.display().to_string(),
             tftp_read_only: config.tftp.read_only,
-            
+
             ssh_port: config.ssh.port.to_string(),
             ssh_root_dir: config.ssh.root_dir.display().to_string(),
             ssh_username: config.ssh.username.clone(),
             ssh_password: config.ssh.password.clone(),
-            
+
             config,
             servers,
             selected_server: Some(0),
@@ -167,40 +166,42 @@ impl OServersApp {
     /// Setup Chinese font support
     fn setup_fonts(ctx: &egui::Context) {
         let mut fonts = egui::FontDefinitions::default();
-        
+
         // Try to load Microsoft YaHei (微软雅黑) from Windows
         let font_paths = [
-            "C:\\Windows\\Fonts\\msyh.ttc",      // Microsoft YaHei
-            "C:\\Windows\\Fonts\\msyhbd.ttc",    // Microsoft YaHei Bold
-            "C:\\Windows\\Fonts\\simsun.ttc",    // SimSun
-            "C:\\Windows\\Fonts\\simhei.ttf",    // SimHei
+            "C:\\Windows\\Fonts\\msyh.ttc",   // Microsoft YaHei
+            "C:\\Windows\\Fonts\\msyhbd.ttc", // Microsoft YaHei Bold
+            "C:\\Windows\\Fonts\\simsun.ttc", // SimSun
+            "C:\\Windows\\Fonts\\simhei.ttf", // SimHei
         ];
-        
+
         for font_path in &font_paths {
             if let Ok(font_data) = std::fs::read(font_path) {
                 fonts.font_data.insert(
                     "chinese_font".to_owned(),
                     std::sync::Arc::new(egui::FontData::from_owned(font_data)),
                 );
-                
+
                 // Add Chinese font as FALLBACK (push to end, not insert at 0)
                 // This way the default font handles emojis, Chinese font handles CJK characters
-                fonts.families
+                fonts
+                    .families
                     .entry(egui::FontFamily::Proportional)
                     .or_default()
                     .push("chinese_font".to_owned());
-                
+
                 // Add to monospace fonts (used for code/logs)
-                fonts.families
+                fonts
+                    .families
                     .entry(egui::FontFamily::Monospace)
                     .or_default()
                     .push("chinese_font".to_owned());
-                
+
                 tracing::info!("Loaded Chinese font from: {}", font_path);
                 break;
             }
         }
-        
+
         ctx.set_fonts(fonts);
     }
 
@@ -337,7 +338,7 @@ impl eframe::App for OServersApp {
                 for (idx, entry) in self.servers.iter().enumerate() {
                     let is_selected = self.selected_server == Some(idx);
                     let status = entry.status();
-                    
+
                     // Use colored circles instead of emoji for reliable display
                     let status_color = match &status {
                         ServerStatus::Stopped => egui::Color32::GRAY,
@@ -349,14 +350,15 @@ impl eframe::App for OServersApp {
 
                     ui.horizontal(|ui| {
                         // Draw a colored circle as status indicator
-                        let (rect, _response) = ui.allocate_exact_size(
-                            egui::vec2(16.0, 16.0),
-                            egui::Sense::hover()
-                        );
+                        let (rect, _response) =
+                            ui.allocate_exact_size(egui::vec2(16.0, 16.0), egui::Sense::hover());
                         let center = rect.center();
                         ui.painter().circle_filled(center, 6.0, status_color);
-                        
-                        if ui.selectable_label(is_selected, entry.server_type.name()).clicked() {
+
+                        if ui
+                            .selectable_label(is_selected, entry.server_type.name())
+                            .clicked()
+                        {
                             self.selected_server = Some(idx);
                         }
                     });
@@ -382,10 +384,8 @@ impl eframe::App for OServersApp {
                             if ui.button("⏹ Stop").clicked() {
                                 stop_clicked = true;
                             }
-                        } else {
-                            if ui.button("▶ Start").clicked() {
-                                start_clicked = true;
-                            }
+                        } else if ui.button("▶ Start").clicked() {
+                            start_clicked = true;
                         }
                     });
                 });
@@ -420,9 +420,7 @@ impl eframe::App for OServersApp {
                     .id_salt(format!("settings_scroll_{}", idx))
                     .max_height(200.0)
                     .show(ui, |ui| {
-                        ui.add_enabled_ui(!is_running, |ui| {
-                        
-                        match server_type {
+                        ui.add_enabled_ui(!is_running, |ui| match server_type {
                             ServerType::Http => {
                                 egui::Grid::new("http_settings")
                                     .num_columns(2)
@@ -432,7 +430,9 @@ impl eframe::App for OServersApp {
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.http_root_dir);
                                             if ui.button("📁").clicked() {
-                                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                                if let Some(path) =
+                                                    rfd::FileDialog::new().pick_folder()
+                                                {
                                                     self.http_root_dir = path.display().to_string();
                                                 }
                                             }
@@ -444,15 +444,24 @@ impl eframe::App for OServersApp {
                                         ui.end_row();
 
                                         ui.label("Directory listing:");
-                                        ui.checkbox(&mut self.http_allow_listing, "Allow users to list directory content");
+                                        ui.checkbox(
+                                            &mut self.http_allow_listing,
+                                            "Allow users to list directory content",
+                                        );
                                         ui.end_row();
 
                                         ui.label("Auto stop:");
                                         ui.horizontal(|ui| {
-                                            ui.checkbox(&mut self.http_auto_stop, "Stop server after");
+                                            ui.checkbox(
+                                                &mut self.http_auto_stop,
+                                                "Stop server after",
+                                            );
                                             ui.add_enabled(
                                                 self.http_auto_stop,
-                                                egui::TextEdit::singleline(&mut self.http_auto_stop_secs).desired_width(50.0)
+                                                egui::TextEdit::singleline(
+                                                    &mut self.http_auto_stop_secs,
+                                                )
+                                                .desired_width(50.0),
                                             );
                                             ui.label("seconds");
                                         });
@@ -468,7 +477,9 @@ impl eframe::App for OServersApp {
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.ftp_root_dir);
                                             if ui.button("📁").clicked() {
-                                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                                if let Some(path) =
+                                                    rfd::FileDialog::new().pick_folder()
+                                                {
                                                     self.ftp_root_dir = path.display().to_string();
                                                 }
                                             }
@@ -484,24 +495,37 @@ impl eframe::App for OServersApp {
                                         ui.end_row();
 
                                         ui.label("Password:");
-                                        ui.add(egui::TextEdit::singleline(&mut self.ftp_password).password(true));
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.ftp_password)
+                                                .password(true),
+                                        );
                                         ui.end_row();
 
                                         ui.label("Anonymous:");
-                                        ui.checkbox(&mut self.ftp_anonymous, "Allow anonymous access");
+                                        ui.checkbox(
+                                            &mut self.ftp_anonymous,
+                                            "Allow anonymous access",
+                                        );
                                         ui.end_row();
 
                                         ui.label("Transfer mode:");
                                         ui.horizontal(|ui| {
-                                            ui.checkbox(&mut self.ftp_passive_mode, "Passive mode (recommended)");
+                                            ui.checkbox(
+                                                &mut self.ftp_passive_mode,
+                                                "Passive mode (recommended)",
+                                            );
                                         });
                                         ui.end_row();
 
                                         ui.label("Passive ports:");
                                         ui.horizontal(|ui| {
-                                            ui.text_edit_singleline(&mut self.ftp_passive_ports_start);
+                                            ui.text_edit_singleline(
+                                                &mut self.ftp_passive_ports_start,
+                                            );
                                             ui.label("-");
-                                            ui.text_edit_singleline(&mut self.ftp_passive_ports_end);
+                                            ui.text_edit_singleline(
+                                                &mut self.ftp_passive_ports_end,
+                                            );
                                         });
                                         ui.end_row();
                                     });
@@ -515,7 +539,9 @@ impl eframe::App for OServersApp {
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.tftp_root_dir);
                                             if ui.button("📁").clicked() {
-                                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                                if let Some(path) =
+                                                    rfd::FileDialog::new().pick_folder()
+                                                {
                                                     self.tftp_root_dir = path.display().to_string();
                                                 }
                                             }
@@ -540,7 +566,9 @@ impl eframe::App for OServersApp {
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.ssh_root_dir);
                                             if ui.button("📁").clicked() {
-                                                if let Some(path) = rfd::FileDialog::new().pick_folder() {
+                                                if let Some(path) =
+                                                    rfd::FileDialog::new().pick_folder()
+                                                {
                                                     self.ssh_root_dir = path.display().to_string();
                                                 }
                                             }
@@ -556,11 +584,13 @@ impl eframe::App for OServersApp {
                                         ui.end_row();
 
                                         ui.label("Password:");
-                                        ui.add(egui::TextEdit::singleline(&mut self.ssh_password).password(true));
+                                        ui.add(
+                                            egui::TextEdit::singleline(&mut self.ssh_password)
+                                                .password(true),
+                                        );
                                         ui.end_row();
                                     });
                             }
-                        }
                         });
                     });
 
@@ -582,7 +612,9 @@ impl eframe::App for OServersApp {
                                 LogLevel::Error => egui::Color32::LIGHT_RED,
                             };
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(&timestamp).color(egui::Color32::GRAY));
+                                ui.label(
+                                    egui::RichText::new(&timestamp).color(egui::Color32::GRAY),
+                                );
                                 ui.label(egui::RichText::new(&log.message).color(color));
                             });
                         }
