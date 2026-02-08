@@ -417,9 +417,10 @@ impl eframe::App for OServersApp {
 
                 // Server-specific settings
                 egui::ScrollArea::vertical()
+                    .id_salt(format!("settings_scroll_{}", idx))
                     .max_height(200.0)
                     .show(ui, |ui| {
-                        ui.set_enabled(!is_running);
+                        ui.add_enabled_ui(!is_running, |ui| {
                         
                         match server_type {
                             ServerType::Http => {
@@ -560,6 +561,7 @@ impl eframe::App for OServersApp {
                                     });
                             }
                         }
+                        });
                     });
 
                 ui.separator();
@@ -567,7 +569,9 @@ impl eframe::App for OServersApp {
                 // Server output log
                 ui.heading("Server output");
                 egui::ScrollArea::vertical()
+                    .id_salt(format!("logs_scroll_{}", idx))
                     .auto_shrink([false; 2])
+                    .max_height(300.0)
                     .stick_to_bottom(true)
                     .show(ui, |ui| {
                         for log in &logs {
