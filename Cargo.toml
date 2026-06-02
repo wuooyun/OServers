@@ -50,6 +50,11 @@ rfd = "0.14"
 # Pinned versions for Rust 1.85 compatibility
 time = "=0.3.36"
 home = "=0.5.9"
+russh-sftp = "2.3.0"
+russh = "0.61.1"
+russh-keys = "0.49.2"
+rand = "0.10.1"
+ssh-key = { version = "0.7.0-rc.10", features = ["ed25519", "rsa"] }
 
 [profile.release]
 opt-level = "z"
