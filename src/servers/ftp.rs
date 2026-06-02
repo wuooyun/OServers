@@ -173,3 +173,172 @@ pub async fn start_server(
 pub fn create_handle(config: FtpConfig) -> ServerHandle {
     ServerHandle::new(config.into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpStream;
+    use crate::servers::{ServerConfig, ServerState};
+
+    async fn read_line(stream: &mut TcpStream) -> String {
+        let mut line = Vec::new();
+        let mut buf = [0u8; 1];
+        loop {
+            match stream.read_exact(&mut buf).await {
+                Ok(_) => {
+                    line.push(buf[0]);
+                    if buf[0] == b'\n' {
+                        break;
+                    }
+                }
+                Err(e) => panic!("failed to read line: {}", e),
+            }
+        }
+        String::from_utf8_lossy(&line).into_owned()
+    }
+
+    async fn read_ftp_response(stream: &mut TcpStream) -> (u16, String) {
+        loop {
+            let line = read_line(stream).await;
+            if line.len() >= 4 {
+                let code_str = &line[0..3];
+                let space_char = &line[3..4];
+                if code_str.chars().all(|c| c.is_ascii_digit()) && space_char == " " {
+                    let code = code_str.parse::<u16>().unwrap();
+                    return (code, line);
+                }
+            }
+        }
+    }
+
+    fn get_free_port() -> u16 {
+        std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port()
+    }
+
+    #[tokio::test]
+    async fn test_ftp_put() {
+        let port = get_free_port();
+        let test_dir = std::env::temp_dir().join(format!(
+            "ftp_test_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        ));
+        std::fs::create_dir_all(&test_dir).unwrap();
+
+        let state = Arc::new(parking_lot::RwLock::new(ServerState::new(ServerConfig {
+            root_dir: test_dir.clone(),
+            port,
+            auto_stop_seconds: None,
+        })));
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+
+        let config = FtpConfig {
+            root_dir: test_dir.clone(),
+            port,
+            username: "admin".to_string(),
+            password: "admin".to_string(),
+            anonymous_access: false,
+            passive_mode: true,
+            passive_ports: (50000, 50100),
+        };
+
+        let state_clone = state.clone();
+        let server_handle = tokio::spawn(async move {
+            start_server(config, state_clone, shutdown_rx).await
+        });
+
+        // Wait for the server to start
+        let mut started = false;
+        for _ in 0..50 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            if matches!(state.read().status, ServerStatus::Running) {
+                started = true;
+                break;
+            }
+        }
+        assert!(started, "FTP Server failed to start");
+
+        // Connect to control port
+        let mut control_stream = TcpStream::connect(format!("127.0.0.1:{}", port))
+            .await
+            .unwrap();
+
+        // 1. Read greeting
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 220);
+
+        // 2. Send USER
+        control_stream.write_all(b"USER admin\r\n").await.unwrap();
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 331);
+
+        // 3. Send PASS
+        control_stream.write_all(b"PASS admin\r\n").await.unwrap();
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 230);
+
+        // 4. Send PASV
+        control_stream.write_all(b"PASV\r\n").await.unwrap();
+        let (code, resp) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 227);
+
+        // Parse passive port
+        let start_idx = resp.find('(').expect("invalid PASV response");
+        let end_idx = resp.find(')').expect("invalid PASV response");
+        let parts: Vec<&str> = resp[start_idx + 1..end_idx].split(',').collect();
+        assert_eq!(parts.len(), 6);
+        let p1: u16 = parts[4].parse().unwrap();
+        let p2: u16 = parts[5].parse().unwrap();
+        let passive_port = (p1 << 8) + p2;
+
+        // 5. Send STOR
+        control_stream
+            .write_all(b"STOR test_file.txt\r\n")
+            .await
+            .unwrap();
+
+        // Connect data connection
+        let mut data_stream = TcpStream::connect(format!("127.0.0.1:{}", passive_port))
+            .await
+            .unwrap();
+
+        // Read 150
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert!(code == 150 || code == 125);
+
+        // 6. Write data
+        let file_content = b"Hello OServers FTP Server Test!";
+        data_stream.write_all(file_content).await.unwrap();
+        data_stream.shutdown().await.unwrap();
+
+        // 7. Read 226
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 226);
+
+        // 8. Send QUIT
+        control_stream.write_all(b"QUIT\r\n").await.unwrap();
+        let (code, _) = read_ftp_response(&mut control_stream).await;
+        assert_eq!(code, 221);
+
+        // Verify file content
+        let expected_file_path = test_dir.join("test_file.txt");
+        assert!(expected_file_path.exists());
+        let content = std::fs::read(&expected_file_path).unwrap();
+        assert_eq!(content, file_content);
+
+        // Stop the server
+        shutdown_tx.send(()).await.unwrap();
+        let _ = server_handle.await;
+
+        // Clean up
+        let _ = std::fs::remove_dir_all(&test_dir);
+    }
+}

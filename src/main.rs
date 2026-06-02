@@ -11,6 +11,58 @@ mod servers;
 
 use gui::app::OServersApp;
 
+fn create_wgpu_setup() -> Option<eframe::egui_wgpu::WgpuSetup> {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+
+    rt.block_on(async {
+        use eframe::wgpu;
+
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+
+        // Try requesting hardware adapter
+        let mut adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: false,
+        }).await;
+
+        if adapter.is_none() {
+            tracing::info!("No hardware wgpu adapter found, trying software/fallback adapter...");
+            adapter = instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::LowPower,
+                compatible_surface: None,
+                force_fallback_adapter: true,
+            }).await;
+        }
+
+        let adapter = adapter?;
+        tracing::info!("Selected adapter: {:?}", adapter.get_info());
+
+        let (device, queue) = adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("oservers_device"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults(),
+                memory_hints: wgpu::MemoryHints::default(),
+            },
+            None,
+        ).await.ok()?;
+
+        Some(eframe::egui_wgpu::WgpuSetup::Existing {
+            instance: std::sync::Arc::new(instance),
+            adapter: std::sync::Arc::new(adapter),
+            device: std::sync::Arc::new(device),
+            queue: std::sync::Arc::new(queue),
+        })
+    })
+}
+
 fn main() -> eframe::Result<()> {
     // Initialize logging
     tracing_subscriber::fmt()
@@ -22,13 +74,18 @@ fn main() -> eframe::Result<()> {
 
     tracing::info!("Starting OServers application");
 
-    let native_options = eframe::NativeOptions {
+    let mut native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([800.0, 600.0])
             .with_min_inner_size([600.0, 400.0])
             .with_icon(load_icon()),
+        renderer: eframe::Renderer::Wgpu,
         ..Default::default()
     };
+
+    if let Some(wgpu_setup) = create_wgpu_setup() {
+        native_options.wgpu_options.wgpu_setup = wgpu_setup;
+    }
 
     eframe::run_native(
         "OServers - Server Management",
