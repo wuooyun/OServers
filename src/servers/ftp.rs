@@ -60,11 +60,14 @@ impl libunftp::auth::Authenticator<DefaultUser> for SimpleAuthenticator {
         username: &str,
         creds: &libunftp::auth::Credentials,
     ) -> Result<DefaultUser, libunftp::auth::AuthenticationError> {
+        let client_ip = creds.source_ip;
+
         // Allow anonymous if enabled
         if self.allow_anonymous && username == "anonymous" {
-            self.state.write().add_log(LogMessage::info(
-                "FTP: Anonymous user logged in successfully",
-            ));
+            self.state.write().add_log(LogMessage::info(format!(
+                "FTP: Anonymous user logged in successfully from {}",
+                client_ip
+            )));
             return Ok(DefaultUser);
         }
 
@@ -72,16 +75,16 @@ impl libunftp::auth::Authenticator<DefaultUser> for SimpleAuthenticator {
         if let Some(password) = creds.password.as_ref() {
             if username == self.username && password == &self.password {
                 self.state.write().add_log(LogMessage::info(format!(
-                    "FTP: User '{}' logged in successfully",
-                    username
+                    "FTP: User '{}' logged in successfully from {}",
+                    username, client_ip
                 )));
                 return Ok(DefaultUser);
             }
         }
 
         self.state.write().add_log(LogMessage::error(format!(
-            "FTP: Failed login attempt for user '{}'",
-            username
+            "FTP: Failed login attempt for user '{}' from {}",
+            username, client_ip
         )));
         Err(libunftp::auth::AuthenticationError::BadPassword)
     }
@@ -348,12 +351,12 @@ mod tests {
         let content = std::fs::read(&expected_file_path).unwrap();
         assert_eq!(content, file_content);
 
-        // Verify logs contain the user login event
+        // Verify logs contain the user login event with source IP
         let logs = state.read().logs.clone();
         assert!(
             logs.iter()
-                .any(|l| l.message.contains("User 'admin' logged in successfully")),
-            "Expected login log message, found: {:?}",
+                .any(|l| l.message.contains("User 'admin' logged in successfully from 127.0.0.1")),
+            "Expected login log message with source IP, found: {:?}",
             logs
         );
 
