@@ -91,6 +91,7 @@ impl Default for ServerConfig {
 
 /// Shared server state
 #[allow(dead_code)]
+#[derive(Debug)]
 pub struct ServerState {
     pub status: ServerStatus,
     pub logs: Vec<LogMessage>,

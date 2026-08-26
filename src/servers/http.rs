@@ -205,8 +205,13 @@ pub async fn start_server(
     // Add logging
     let log_state = state.clone();
     let log = warp::log::custom(move |info| {
+        let client = match info.remote_addr() {
+            Some(addr) => addr.to_string(),
+            None => "-".to_string(),
+        };
         let msg = format!(
-            "{} {} {} {}ms",
+            "HTTP: [{}] {} {} -> {} ({}ms)",
+            client,
             info.method(),
             info.path(),
             info.status().as_u16(),

@@ -50,6 +50,7 @@ struct SimpleAuthenticator {
     username: String,
     password: String,
     allow_anonymous: bool,
+    state: SharedState,
 }
 
 #[async_trait::async_trait]
@@ -61,15 +62,27 @@ impl libunftp::auth::Authenticator<DefaultUser> for SimpleAuthenticator {
     ) -> Result<DefaultUser, libunftp::auth::AuthenticationError> {
         // Allow anonymous if enabled
         if self.allow_anonymous && username == "anonymous" {
+            self.state.write().add_log(LogMessage::info(
+                "FTP: Anonymous user logged in successfully",
+            ));
             return Ok(DefaultUser);
         }
 
         // Check username and password
         if let Some(password) = creds.password.as_ref() {
             if username == self.username && password == &self.password {
+                self.state.write().add_log(LogMessage::info(format!(
+                    "FTP: User '{}' logged in successfully",
+                    username
+                )));
                 return Ok(DefaultUser);
             }
         }
+
+        self.state.write().add_log(LogMessage::error(format!(
+            "FTP: Failed login attempt for user '{}'",
+            username
+        )));
         Err(libunftp::auth::AuthenticationError::BadPassword)
     }
 }
@@ -98,6 +111,7 @@ pub async fn start_server(
         username: config.username.clone(),
         password: config.password.clone(),
         allow_anonymous: config.anonymous_access,
+        state: state.clone(),
     };
 
     // Determine transfer mode
@@ -333,6 +347,15 @@ mod tests {
         assert!(expected_file_path.exists());
         let content = std::fs::read(&expected_file_path).unwrap();
         assert_eq!(content, file_content);
+
+        // Verify logs contain the user login event
+        let logs = state.read().logs.clone();
+        assert!(
+            logs.iter()
+                .any(|l| l.message.contains("User 'admin' logged in successfully")),
+            "Expected login log message, found: {:?}",
+            logs
+        );
 
         // Stop the server
         shutdown_tx.send(()).await.unwrap();

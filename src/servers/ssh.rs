@@ -299,22 +299,32 @@ struct MySshServer {
 impl Server for MySshServer {
     type Handler = SshSession;
 
-    fn new_client(&mut self, _peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
-        SshSession::new(self.config.clone(), self.state.clone())
+    fn new_client(&mut self, peer_addr: Option<std::net::SocketAddr>) -> Self::Handler {
+        if let Some(addr) = peer_addr {
+            self.state.write().add_log(LogMessage::info(format!(
+                "SSH: New client connected from {}",
+                addr
+            )));
+        } else {
+            self.state.write().add_log(LogMessage::info("SSH: New client connected"));
+        }
+        SshSession::new(self.config.clone(), self.state.clone(), peer_addr)
     }
 }
 
 struct SshSession {
     config: SshConfig,
     state: SharedState,
+    peer_addr: Option<std::net::SocketAddr>,
     clients: Arc<Mutex<HashMap<ChannelId, Channel<Msg>>>>,
 }
 
 impl SshSession {
-    fn new(config: SshConfig, state: SharedState) -> Self {
+    fn new(config: SshConfig, state: SharedState, peer_addr: Option<std::net::SocketAddr>) -> Self {
         Self {
             config,
             state,
+            peer_addr,
             clients: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -329,16 +339,20 @@ impl russh::server::Handler for SshSession {
     type Error = russh::Error;
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        let client_str = match self.peer_addr {
+            Some(addr) => format!(" from {}", addr),
+            None => String::new(),
+        };
         if user == self.config.username && password == self.config.password {
             self.state.write().add_log(LogMessage::info(format!(
-                "SSH: Successful login for user '{}'",
-                user
+                "SSH: Successful login for user '{}'{}",
+                user, client_str
             )));
             Ok(Auth::Accept)
         } else {
             self.state.write().add_log(LogMessage::error(format!(
-                "SSH: Failed login attempt for user '{}'",
-                user
+                "SSH: Failed login attempt for user '{}'{}",
+                user, client_str
             )));
             Ok(Auth::reject())
         }
@@ -359,6 +373,10 @@ impl russh::server::Handler for SshSession {
         channel: ChannelId,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.state.write().add_log(LogMessage::info(format!(
+            "SSH: Channel {:?} closed (EOF)",
+            channel
+        )));
         let _ = session.close(channel);
         Ok(())
     }
