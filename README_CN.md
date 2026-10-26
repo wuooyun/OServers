@@ -144,6 +144,23 @@ cargo fmt --check
 cargo clippy
 ```
 
+### 版本发布流程
+
+发布由 [`.github/workflows/release.yml`](.github/workflows/release.yml) 自动完成：
+
+1. 修改 `Cargo.toml` 中的 `version`（推荐；若与 tag 不一致只会输出警告，正式版本的界面显示以 tag 为准）。
+2. 提交后打 tag 并推送：
+
+   ```bash
+   git commit -am "chore: release v0.2.0"
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+3. 工作流会自动编译 Windows / Linux / macOS 三个平台的二进制文件，并附加到以 tag 命名的 GitHub Release 中。
+
+程序界面左下角会显示当前运行的版本：正式版本显示 `v0.2.0`，本地开发构建显示 `v0.1.0-dev.<commit>`；鼠标悬停可查看提交哈希与目标平台。
+
 ---
 
 ## 🗺️ 架构与设计

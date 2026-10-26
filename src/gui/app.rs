@@ -8,6 +8,7 @@ use crate::servers::{
     tftp::{self, TftpConfig},
     LogLevel, LogMessage, ServerStatus, SharedState,
 };
+use crate::version;
 use eframe::egui;
 use parking_lot::RwLock;
 use std::path::PathBuf;
@@ -388,6 +389,19 @@ impl eframe::App for OServersApp {
                         }
                     });
                 }
+
+                // Version label pinned to the bottom of the side panel.
+                // Hovering shows the commit and platform the binary was
+                // built for.
+                ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
+                    ui.label(
+                        egui::RichText::new(format!("OServers {}", version::short()))
+                            .small()
+                            .color(egui::Color32::GRAY),
+                    )
+                    .on_hover_text(version::full());
+                    ui.separator();
+                });
             });
 
         egui::CentralPanel::default().show(ctx, |ui| {

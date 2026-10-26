@@ -148,6 +148,23 @@ cargo fmt --check
 cargo clippy
 ```
 
+### Releasing a New Version
+
+Releases are built and published automatically by [`.github/workflows/release.yml`](.github/workflows/release.yml):
+
+1. Bump `version` in `Cargo.toml` (recommended — a mismatch is reported as a warning, and release binaries display the tag anyway).
+2. Commit, then tag and push:
+
+   ```bash
+   git commit -am "chore: release v0.2.0"
+   git tag v0.2.0
+   git push origin main v0.2.0
+   ```
+
+3. The workflow builds the Windows, Linux and macOS binaries and attaches them to a GitHub Release named after the tag.
+
+The GUI displays the running build in the bottom-left corner of the sidebar: `v0.2.0` for a tagged release or `v0.1.0-dev.<commit>` for a local build. Hover the label to see the commit and target platform.
+
 ---
 
 ## 🗺️ Architecture & Design

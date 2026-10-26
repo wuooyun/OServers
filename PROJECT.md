@@ -239,3 +239,8 @@ pub mod webdav;
 - **`cargo fmt --all -- --check`**：代码风格规范校验。
 - **`cargo clippy --all-features -- -D warnings`**：静态分析与潜在隐患扫描。
 - **`cargo test --all-features`**：单元测试与端到端协议通信集成测试（如 `test_ftp_put`）。
+
+### 版本发布与版本信息
+
+- 发布由 `.github/workflows/release.yml` 自动完成：推送 `v*`（或纯数字，如 `0.8.0`）标签后，自动编译 Windows / Linux / macOS 二进制，并以 tag 命名创建 GitHub Release。
+- `build.rs` 在编译期读取当前 commit 与 tag，通过 `cargo:rustc-env` 注入 `src/version.rs`；正式版本显示 `v<tag>`，本地开发构建显示 `v<Cargo版本>-dev.<commit>`，可在主界面左下角（悬停查看 commit 与目标平台）及窗口标题中查看。

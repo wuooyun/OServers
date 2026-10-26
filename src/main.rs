@@ -8,6 +8,7 @@
 mod config;
 mod gui;
 mod servers;
+mod version;
 
 use gui::app::OServersApp;
 
@@ -20,7 +21,7 @@ fn main() -> eframe::Result<()> {
         )
         .init();
 
-    tracing::info!("Starting OServers application");
+    tracing::info!("Starting OServers application ({})", version::full());
 
     let native_options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
@@ -31,8 +32,10 @@ fn main() -> eframe::Result<()> {
         ..Default::default()
     };
 
+    let title = format!("OServers {} - Server Management", version::short());
+
     eframe::run_native(
-        "OServers - Server Management",
+        &title,
         native_options,
         Box::new(|cc| Ok(Box::new(OServersApp::new(cc)))),
     )
