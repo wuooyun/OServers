@@ -2,8 +2,8 @@
 
 use super::{LogMessage, ServerConfig, ServerError, ServerHandle, ServerStatus, SharedState};
 use async_tftp::packet;
-use async_tftp::server::handlers::{DirHandler, DirHandlerMode};
 use async_tftp::server::Handler;
+use async_tftp::server::handlers::{DirHandler, DirHandlerMode};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use tokio::sync::mpsc;
@@ -56,9 +56,7 @@ impl Handler for LoggingHandler {
         let result = self.inner.read_req_open(client, path).await;
         match &result {
             Ok((_, size)) => {
-                let size = size
-                    .map(|s| format!(" ({} bytes)", s))
-                    .unwrap_or_default();
+                let size = size.map(|s| format!(" ({} bytes)", s)).unwrap_or_default();
                 self.state.write().add_log(LogMessage::info(format!(
                     "[TFTP] client={} RRQ download {}{}",
                     client,
@@ -87,9 +85,7 @@ impl Handler for LoggingHandler {
         let result = self.inner.write_req_open(client, path, size).await;
         match &result {
             Ok(_) => {
-                let size = size
-                    .map(|s| format!(" ({} bytes)", s))
-                    .unwrap_or_default();
+                let size = size.map(|s| format!(" ({} bytes)", s)).unwrap_or_default();
                 self.state.write().add_log(LogMessage::info(format!(
                     "[TFTP] client={} WRQ upload {}{}",
                     client,
@@ -120,10 +116,9 @@ pub async fn start_server(
     let port = config.port;
 
     // Update status
-    let run_id = state.write().begin_run(format!(
-        "Starting TFTP server on port {}...",
-        port
-    ));
+    let run_id = state
+        .write()
+        .begin_run(format!("Starting TFTP server on port {}...", port));
 
     let addr: std::net::SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
 

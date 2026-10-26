@@ -2,11 +2,11 @@
 
 use crate::config::AppConfig;
 use crate::servers::{
+    LogLevel, LogMessage, ServerStatus, SharedState,
     ftp::{self, FtpConfig},
     http::{self, HttpConfig},
     ssh::{self, SshConfig},
     tftp::{self, TftpConfig},
-    LogLevel, LogMessage, ServerStatus, SharedState,
 };
 use crate::version;
 use eframe::egui;
@@ -468,12 +468,11 @@ impl eframe::App for OServersApp {
                                         ui.label("Root directory:");
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.http_root_dir);
-                                            if ui.button("📁").clicked() {
-                                                if let Some(path) =
+                                            if ui.button("📁").clicked()
+                                                && let Some(path) =
                                                     rfd::FileDialog::new().pick_folder()
-                                                {
-                                                    self.http_root_dir = path.display().to_string();
-                                                }
+                                            {
+                                                self.http_root_dir = path.display().to_string();
                                             }
                                         });
                                         ui.end_row();
@@ -515,12 +514,11 @@ impl eframe::App for OServersApp {
                                         ui.label("Root directory:");
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.ftp_root_dir);
-                                            if ui.button("📁").clicked() {
-                                                if let Some(path) =
+                                            if ui.button("📁").clicked()
+                                                && let Some(path) =
                                                     rfd::FileDialog::new().pick_folder()
-                                                {
-                                                    self.ftp_root_dir = path.display().to_string();
-                                                }
+                                            {
+                                                self.ftp_root_dir = path.display().to_string();
                                             }
                                         });
                                         ui.end_row();
@@ -578,12 +576,11 @@ impl eframe::App for OServersApp {
                                         ui.label("Root directory:");
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.tftp_root_dir);
-                                            if ui.button("📁").clicked() {
-                                                if let Some(path) =
+                                            if ui.button("📁").clicked()
+                                                && let Some(path) =
                                                     rfd::FileDialog::new().pick_folder()
-                                                {
-                                                    self.tftp_root_dir = path.display().to_string();
-                                                }
+                                            {
+                                                self.tftp_root_dir = path.display().to_string();
                                             }
                                         });
                                         ui.end_row();
@@ -605,12 +602,11 @@ impl eframe::App for OServersApp {
                                         ui.label("Root directory:");
                                         ui.horizontal(|ui| {
                                             ui.text_edit_singleline(&mut self.ssh_root_dir);
-                                            if ui.button("📁").clicked() {
-                                                if let Some(path) =
+                                            if ui.button("📁").clicked()
+                                                && let Some(path) =
                                                     rfd::FileDialog::new().pick_folder()
-                                                {
-                                                    self.ssh_root_dir = path.display().to_string();
-                                                }
+                                            {
+                                                self.ssh_root_dir = path.display().to_string();
                                             }
                                         });
                                         ui.end_row();

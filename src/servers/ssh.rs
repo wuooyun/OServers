@@ -1,16 +1,16 @@
 //! SSH/SFTP Server implementation using russh and russh-sftp
 
 use super::{LogMessage, ServerConfig, ServerError, ServerHandle, ServerStatus, SharedState};
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-use tokio::fs::File as TokioFile;
+use russh::server::{Auth, Msg, Server, Session};
 use russh::{Channel, ChannelId};
-use russh::server::{Auth, Msg, Session, Server};
 use russh_sftp::protocol::{
     Attrs, Data, File, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version,
 };
+use std::collections::HashMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::fs::File as TokioFile;
+use tokio::sync::{Mutex, mpsc};
 
 /// SSH server specific configuration
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -51,10 +51,9 @@ pub async fn start_server(
     let port = config.port;
 
     // Update status
-    let run_id = state.write().begin_run(format!(
-        "Starting SSH/SFTP server on port {}...",
-        port
-    ));
+    let run_id = state
+        .write()
+        .begin_run(format!("Starting SSH/SFTP server on port {}...", port));
 
     // Get host keys
     let host_keys = match get_host_keys(&state) {
@@ -114,7 +113,10 @@ pub async fn start_server(
             let mut s = state.write();
             if s.is_active_run(run_id) {
                 s.status = ServerStatus::Error(e.to_string());
-                s.add_log(LogMessage::error(format!("Failed to bind port {}: {}", port, e)));
+                s.add_log(LogMessage::error(format!(
+                    "Failed to bind port {}: {}",
+                    port, e
+                )));
             }
             return Err(ServerError::IoError(e));
         }
@@ -137,7 +139,9 @@ pub async fn start_server(
                 config.root_dir.display()
             )));
             s.add_log(LogMessage::info(format!("Username: {}", config.username)));
-            s.add_log(LogMessage::info("Legacy algorithm compatibility: enabled (for traditional switches/servers)"));
+            s.add_log(LogMessage::info(
+                "Legacy algorithm compatibility: enabled (for traditional switches/servers)",
+            ));
         }
     }
 
@@ -278,8 +282,8 @@ fn generate_and_save_rsa(
         ssh_key::private::RsaKeypair::random(&mut rand::rng(), 2048)
             .map_err(|e| ServerError::Other(e.to_string()))?,
     );
-    let key = ssh_key::PrivateKey::new(key_data, "")
-        .map_err(|e| ServerError::Other(e.to_string()))?;
+    let key =
+        ssh_key::PrivateKey::new(key_data, "").map_err(|e| ServerError::Other(e.to_string()))?;
 
     if let Err(e) = key.write_openssh_file(path, ssh_key::LineEnding::LF) {
         state.write().add_log(LogMessage::error(format!(
@@ -312,7 +316,9 @@ impl Server for MySshServer {
                 addr
             )));
         } else {
-            self.state.write().add_log(LogMessage::info("SSH: New client connected"));
+            self.state
+                .write()
+                .add_log(LogMessage::info("SSH: New client connected"));
         }
         SshSession::new(self.config.clone(), self.state.clone(), peer_addr)
     }
@@ -448,11 +454,7 @@ struct SftpSession {
 }
 
 impl SftpSession {
-    fn new(
-        root_dir: PathBuf,
-        state: SharedState,
-        peer_addr: Option<std::net::SocketAddr>,
-    ) -> Self {
+    fn new(root_dir: PathBuf, state: SharedState, peer_addr: Option<std::net::SocketAddr>) -> Self {
         Self {
             root_dir,
             next_handle_id: 1,
@@ -542,7 +544,10 @@ impl russh_sftp::server::Handler for SftpSession {
             return Err(StatusCode::ConnectionLost);
         }
         self.version = Some(version);
-        self.log_info(format!("SFTP session initialized (protocol version {})", version));
+        self.log_info(format!(
+            "SFTP session initialized (protocol version {})",
+            version
+        ));
         Ok(Version::new())
     }
 
@@ -599,11 +604,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let handle_str = format!("d_{}", self.next_handle_id);
         self.next_handle_id += 1;
 
-        self.log_info(format!(
-            "OPENDIR {} ({} entries)",
-            path,
-            dir_entries.len()
-        ));
+        self.log_info(format!("OPENDIR {} ({} entries)", path, dir_entries.len()));
 
         self.dirs.insert(
             handle_str.clone(),
@@ -758,11 +759,13 @@ impl russh_sftp::server::Handler for SftpSession {
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         let path = self.resolve_path(&filename)?;
-        tokio::fs::remove_file(&path).await.map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => StatusCode::NoSuchFile,
-            std::io::ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
-            _ => StatusCode::Failure,
-        })?;
+        tokio::fs::remove_file(&path)
+            .await
+            .map_err(|e| match e.kind() {
+                std::io::ErrorKind::NotFound => StatusCode::NoSuchFile,
+                std::io::ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+                _ => StatusCode::Failure,
+            })?;
 
         self.log_info(format!("REMOVE {}", filename));
 
@@ -847,9 +850,9 @@ impl russh_sftp::server::Handler for SftpSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::servers::{ServerConfig, ServerState};
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    use crate::servers::{ServerConfig, ServerState};
 
     struct TestClient;
 
@@ -900,9 +903,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let server_handle = tokio::spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let server_handle =
+            tokio::spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         // Wait for the server to start
         let mut started = false;
@@ -922,7 +924,10 @@ mod tests {
             .await
             .unwrap();
 
-        let auth_res = session.authenticate_password("admin", "admin").await.unwrap();
+        let auth_res = session
+            .authenticate_password("admin", "admin")
+            .await
+            .unwrap();
         assert!(auth_res.success(), "SFTP Authentication failed");
 
         let channel = session.channel_open_session().await.unwrap();
@@ -1016,9 +1021,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let server_handle = tokio::spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let server_handle =
+            tokio::spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         // Wait for the server to start
         let mut started = false;
@@ -1034,19 +1038,20 @@ mod tests {
         // Connect using a client restricted strictly to legacy algorithms
         let mut client_config = russh::client::Config::default();
         let mut client_preferred = russh::Preferred::default();
-        
+
         // Only allow DH Group 14 SHA1
         client_preferred.kex = std::borrow::Cow::Owned(vec![russh::kex::DH_G14_SHA1]);
-        
+
         // Only allow AES-128-CBC
         client_preferred.cipher = std::borrow::Cow::Owned(vec![russh::cipher::AES_128_CBC]);
-        
+
         // Only allow HMAC-SHA1
         client_preferred.mac = std::borrow::Cow::Owned(vec![russh::mac::HMAC_SHA1]);
-        
+
         // Only allow ssh-rsa signature (SHA1)
-        client_preferred.key = std::borrow::Cow::Owned(vec![ssh_key::Algorithm::Rsa { hash: None }]);
-        
+        client_preferred.key =
+            std::borrow::Cow::Owned(vec![ssh_key::Algorithm::Rsa { hash: None }]);
+
         client_config.preferred = client_preferred;
 
         let sh = TestClient;
@@ -1054,7 +1059,10 @@ mod tests {
             .await
             .unwrap();
 
-        let auth_res = session.authenticate_password("admin", "admin").await.unwrap();
+        let auth_res = session
+            .authenticate_password("admin", "admin")
+            .await
+            .unwrap();
         assert!(auth_res.success(), "SFTP Legacy Authentication failed");
 
         let channel = session.channel_open_session().await.unwrap();

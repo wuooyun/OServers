@@ -93,17 +93,18 @@ impl Authenticator<FtpUser> for SimpleAuthenticator {
         }
 
         // Check username and password
-        if let Some(password) = creds.password.as_ref() {
-            if username == self.username && password == &self.password {
-                self.state.write().add_log(LogMessage::info(format!(
-                    "[FTP] client={} User '{}' logged in successfully from {}",
-                    client_ip, username, client_ip
-                )));
-                return Ok(FtpUser {
-                    username: username.to_string(),
-                    client_ip,
-                });
-            }
+        if let Some(password) = creds.password.as_ref()
+            && username == self.username
+            && password == &self.password
+        {
+            self.state.write().add_log(LogMessage::info(format!(
+                "[FTP] client={} User '{}' logged in successfully from {}",
+                client_ip, username, client_ip
+            )));
+            return Ok(FtpUser {
+                username: username.to_string(),
+                client_ip,
+            });
         }
 
         self.state.write().add_log(LogMessage::error(format!(
@@ -131,7 +132,13 @@ impl LoggingFs {
         )));
     }
 
-    fn log_fail(&self, user: &FtpUser, command: &str, detail: &str, err: &libunftp::storage::Error) {
+    fn log_fail(
+        &self,
+        user: &FtpUser,
+        command: &str,
+        detail: &str,
+        err: &libunftp::storage::Error,
+    ) {
         self.state.write().add_log(LogMessage::error(format!(
             "[FTP] client={} user={} {} {} failed: {}",
             user.client_ip, user.username, command, detail, err
@@ -202,7 +209,10 @@ impl StorageBackend<FtpUser> for LoggingFs {
         result
     }
 
-    async fn put<P: AsRef<Path> + Send + Debug, R: tokio::io::AsyncRead + Send + Sync + Unpin + 'static>(
+    async fn put<
+        P: AsRef<Path> + Send + Debug,
+        R: tokio::io::AsyncRead + Send + Sync + Unpin + 'static,
+    >(
         &self,
         user: &FtpUser,
         input: R,
@@ -300,10 +310,9 @@ pub async fn start_server(
     let port = config.port;
 
     // Update status
-    let run_id = state.write().begin_run(format!(
-        "Starting FTP server on port {}...",
-        port
-    ));
+    let run_id = state
+        .write()
+        .begin_run(format!("Starting FTP server on port {}...", port));
 
     // Create authenticator
     let authenticator = SimpleAuthenticator {
@@ -425,9 +434,9 @@ pub fn create_handle(config: FtpConfig) -> ServerHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::servers::{ServerConfig, ServerState};
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
-    use crate::servers::{ServerConfig, ServerState};
 
     async fn read_line(stream: &mut TcpStream) -> String {
         let mut line = Vec::new();
@@ -499,9 +508,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let server_handle = tokio::spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let server_handle =
+            tokio::spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         // Wait for the server to start
         let mut started = false;
@@ -585,8 +593,9 @@ mod tests {
         // Verify logs contain the user login event with source IP
         let logs = state.read().logs.clone();
         assert!(
-            logs.iter()
-                .any(|l| l.message.contains("User 'admin' logged in successfully from 127.0.0.1")),
+            logs.iter().any(|l| l
+                .message
+                .contains("User 'admin' logged in successfully from 127.0.0.1")),
             "Expected login log message with source IP, found: {:?}",
             logs
         );

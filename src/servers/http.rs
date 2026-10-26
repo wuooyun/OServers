@@ -1,7 +1,7 @@
 //! HTTP Server implementation using warp
 
 use super::{LogMessage, ServerConfig, ServerError, ServerHandle, ServerStatus, SharedState};
-use percent_encoding::{utf8_percent_encode, AsciiSet, CONTROLS};
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -109,7 +109,9 @@ fn escape_html(text: &str) -> String {
 /// paths that would escape the root (`..`, drive letters, separators inside a
 /// segment, ...).
 fn decode_request_tail(tail: &str) -> Option<(String, PathBuf)> {
-    let decoded = percent_encoding::percent_decode_str(tail).decode_utf8().ok()?;
+    let decoded = percent_encoding::percent_decode_str(tail)
+        .decode_utf8()
+        .ok()?;
     let mut relative = PathBuf::new();
 
     for segment in decoded.split('/') {
@@ -262,10 +264,9 @@ pub async fn start_server(
     let allow_listing = config.allow_directory_listing;
 
     // Update status
-    let run_id = state.write().begin_run(format!(
-        "Starting HTTP server on port {}...",
-        port
-    ));
+    let run_id = state
+        .write()
+        .begin_run(format!("Starting HTTP server on port {}...", port));
 
     // Clone root for use in filters
     let root_for_listing = root.clone();
@@ -308,16 +309,15 @@ pub async fn start_server(
                             return Err(warp::reject::not_found());
                         }
 
-                        if allow {
-                            if let Some(html) =
+                        if allow
+                            && let Some(html) =
                                 generate_directory_listing(&full_path, &request_path)
-                            {
-                                state.write().add_log(LogMessage::info(format!(
-                                    "[HTTP] client={} LIST {} (directory listing)",
-                                    client, request_path
-                                )));
-                                return Ok(warp::reply::html(html));
-                            }
+                        {
+                            state.write().add_log(LogMessage::info(format!(
+                                "[HTTP] client={} LIST {} (directory listing)",
+                                client, request_path
+                            )));
+                            return Ok(warp::reply::html(html));
                         }
                         state.write().add_log(LogMessage::warning(format!(
                             "[HTTP] client={} LIST {} denied (directory listing disabled or unreadable)",
@@ -549,9 +549,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let handle = runtime.spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let handle =
+            runtime.spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         assert!(wait_for_status(&state, ServerStatus::Running));
 
@@ -642,9 +641,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let handle = runtime.spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let handle =
+            runtime.spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         assert!(
             wait_for_status(&state, ServerStatus::Running),
@@ -654,7 +652,11 @@ mod tests {
 
         // Exercise the server, then make sure the status is still Running.
         let response = http_get(port, "/hello.txt");
-        assert!(response.contains("200 OK"), "unexpected response: {}", response);
+        assert!(
+            response.contains("200 OK"),
+            "unexpected response: {}",
+            response
+        );
 
         // Wait longer than SHUTDOWN_TIMEOUT_SECS: the drain timeout must
         // only apply after a stop request, not during normal serving.
@@ -713,9 +715,8 @@ mod tests {
         };
 
         let state_clone = state.clone();
-        let handle = runtime.spawn(async move {
-            start_server(config, state_clone, shutdown_rx).await
-        });
+        let handle =
+            runtime.spawn(async move { start_server(config, state_clone, shutdown_rx).await });
 
         assert!(wait_for_status(&state, ServerStatus::Running));
 
