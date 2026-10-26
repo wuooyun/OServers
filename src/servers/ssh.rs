@@ -51,22 +51,20 @@ pub async fn start_server(
     let port = config.port;
 
     // Update status
-    {
-        let mut s = state.write();
-        s.status = ServerStatus::Starting;
-        s.add_log(LogMessage::info(format!(
-            "Starting SSH/SFTP server on port {}...",
-            port
-        )));
-    }
+    let run_id = state.write().begin_run(format!(
+        "Starting SSH/SFTP server on port {}...",
+        port
+    ));
 
     // Get host keys
     let host_keys = match get_host_keys(&state) {
         Ok(keys) => keys,
         Err(e) => {
             let mut s = state.write();
-            s.status = ServerStatus::Error(e.to_string());
-            s.add_log(LogMessage::error(format!("Host key error: {}", e)));
+            if s.is_active_run(run_id) {
+                s.status = ServerStatus::Error(e.to_string());
+                s.add_log(LogMessage::error(format!("Host key error: {}", e)));
+            }
             return Err(e);
         }
     };
@@ -114,8 +112,10 @@ pub async fn start_server(
         Ok(l) => l,
         Err(e) => {
             let mut s = state.write();
-            s.status = ServerStatus::Error(e.to_string());
-            s.add_log(LogMessage::error(format!("Failed to bind port {}: {}", port, e)));
+            if s.is_active_run(run_id) {
+                s.status = ServerStatus::Error(e.to_string());
+                s.add_log(LogMessage::error(format!("Failed to bind port {}: {}", port, e)));
+            }
             return Err(ServerError::IoError(e));
         }
     };
@@ -126,25 +126,29 @@ pub async fn start_server(
     // Update status to running
     {
         let mut s = state.write();
-        s.status = ServerStatus::Running;
-        s.add_log(LogMessage::info(format!(
-            "SSH/SFTP server started on sftp://0.0.0.0:{}",
-            port
-        )));
-        s.add_log(LogMessage::info(format!(
-            "Root directory: {}",
-            config.root_dir.display()
-        )));
-        s.add_log(LogMessage::info(format!("Username: {}", config.username)));
-        s.add_log(LogMessage::info("Legacy algorithm compatibility: enabled (for traditional switches/servers)"));
+        if s.is_active_run(run_id) {
+            s.status = ServerStatus::Running;
+            s.add_log(LogMessage::info(format!(
+                "SSH/SFTP server started on sftp://0.0.0.0:{}",
+                port
+            )));
+            s.add_log(LogMessage::info(format!(
+                "Root directory: {}",
+                config.root_dir.display()
+            )));
+            s.add_log(LogMessage::info(format!("Username: {}", config.username)));
+            s.add_log(LogMessage::info("Legacy algorithm compatibility: enabled (for traditional switches/servers)"));
+        }
     }
 
     tokio::select! {
         res = running_server => {
             if let Err(e) = res {
                 let mut s = state.write();
-                s.status = ServerStatus::Error(e.to_string());
-                s.add_log(LogMessage::error(format!("SSH/SFTP server error: {}", e)));
+                if s.is_active_run(run_id) {
+                    s.status = ServerStatus::Error(e.to_string());
+                    s.add_log(LogMessage::error(format!("SSH/SFTP server error: {}", e)));
+                }
                 return Err(ServerError::IoError(e));
             }
         }
@@ -156,8 +160,10 @@ pub async fn start_server(
     // Update status
     {
         let mut s = state.write();
-        s.status = ServerStatus::Stopped;
-        s.add_log(LogMessage::info("SSH/SFTP server stopped"));
+        if s.is_active_run(run_id) {
+            s.status = ServerStatus::Stopped;
+            s.add_log(LogMessage::info("SSH/SFTP server stopped"));
+        }
     }
 
     Ok(())
@@ -329,6 +335,14 @@ impl SshSession {
         }
     }
 
+    /// Client address for log messages
+    fn client_label(&self) -> String {
+        match self.peer_addr {
+            Some(addr) => addr.to_string(),
+            None => "-".to_string(),
+        }
+    }
+
     async fn get_channel(&mut self, channel_id: ChannelId) -> Option<Channel<Msg>> {
         let mut clients = self.clients.lock().await;
         clients.remove(&channel_id)
@@ -339,20 +353,18 @@ impl russh::server::Handler for SshSession {
     type Error = russh::Error;
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
-        let client_str = match self.peer_addr {
-            Some(addr) => format!(" from {}", addr),
-            None => String::new(),
-        };
         if user == self.config.username && password == self.config.password {
             self.state.write().add_log(LogMessage::info(format!(
-                "SSH: Successful login for user '{}'{}",
-                user, client_str
+                "[SSH] client={} successful login for user '{}'",
+                self.client_label(),
+                user
             )));
             Ok(Auth::Accept)
         } else {
             self.state.write().add_log(LogMessage::error(format!(
-                "SSH: Failed login attempt for user '{}'{}",
-                user, client_str
+                "[SSH] client={} failed login attempt for user '{}'",
+                self.client_label(),
+                user
             )));
             Ok(Auth::reject())
         }
@@ -363,6 +375,11 @@ impl russh::server::Handler for SshSession {
         channel: Channel<Msg>,
         _session: &mut Session,
     ) -> Result<bool, Self::Error> {
+        self.state.write().add_log(LogMessage::info(format!(
+            "[SSH] client={} channel {:?} opened",
+            self.client_label(),
+            channel.id()
+        )));
         let mut clients = self.clients.lock().await;
         clients.insert(channel.id(), channel);
         Ok(true)
@@ -374,7 +391,8 @@ impl russh::server::Handler for SshSession {
         session: &mut Session,
     ) -> Result<(), Self::Error> {
         self.state.write().add_log(LogMessage::info(format!(
-            "SSH: Channel {:?} closed (EOF)",
+            "[SSH] client={} channel {:?} closed (EOF)",
+            self.client_label(),
             channel
         )));
         let _ = session.close(channel);
@@ -391,9 +409,16 @@ impl russh::server::Handler for SshSession {
             if let Some(channel) = self.get_channel(channel_id).await {
                 session.channel_success(channel_id)?;
 
-                let sftp = SftpSession::new(self.config.root_dir.clone(), self.state.clone());
+                let sftp = SftpSession::new(
+                    self.config.root_dir.clone(),
+                    self.state.clone(),
+                    self.peer_addr,
+                );
 
-                self.state.write().add_log(LogMessage::info("SSH: Starting SFTP subsystem"));
+                self.state.write().add_log(LogMessage::info(format!(
+                    "[SSH] client={} starting SFTP subsystem",
+                    self.client_label()
+                )));
 
                 tokio::spawn(async move {
                     russh_sftp::server::run(channel.into_stream(), sftp).await;
@@ -419,10 +444,15 @@ struct SftpSession {
     dirs: HashMap<String, OpenDir>,
     version: Option<u32>,
     state: SharedState,
+    peer_addr: Option<std::net::SocketAddr>,
 }
 
 impl SftpSession {
-    fn new(root_dir: PathBuf, state: SharedState) -> Self {
+    fn new(
+        root_dir: PathBuf,
+        state: SharedState,
+        peer_addr: Option<std::net::SocketAddr>,
+    ) -> Self {
         Self {
             root_dir,
             next_handle_id: 1,
@@ -430,10 +460,36 @@ impl SftpSession {
             dirs: HashMap::new(),
             version: None,
             state,
+            peer_addr,
         }
     }
 
+    /// Client address for log messages
+    fn client_label(&self) -> String {
+        match self.peer_addr {
+            Some(addr) => addr.to_string(),
+            None => "-".to_string(),
+        }
+    }
+
+    fn log_info(&self, message: String) {
+        self.state.write().add_log(LogMessage::info(format!(
+            "[SFTP] client={} {}",
+            self.client_label(),
+            message
+        )));
+    }
+
+    fn log_error(&self, message: String) {
+        self.state.write().add_log(LogMessage::error(format!(
+            "[SFTP] client={} {}",
+            self.client_label(),
+            message
+        )));
+    }
+
     fn resolve_path(&self, path: &str) -> Result<PathBuf, StatusCode> {
+        let original = path;
         let path = path.replace('\\', "/");
         let mut components = Vec::new();
         for comp in path.split('/') {
@@ -453,6 +509,7 @@ impl SftpSession {
         }
 
         if !resolved.starts_with(&self.root_dir) {
+            self.log_error(format!("path traversal denied: {}", original));
             return Err(StatusCode::PermissionDenied);
         }
 
@@ -485,6 +542,7 @@ impl russh_sftp::server::Handler for SftpSession {
             return Err(StatusCode::ConnectionLost);
         }
         self.version = Some(version);
+        self.log_info(format!("SFTP session initialized (protocol version {})", version));
         Ok(Version::new())
     }
 
@@ -508,10 +566,13 @@ impl russh_sftp::server::Handler for SftpSession {
         let local_path = self.resolve_path(&path)?;
 
         let mut dir_entries = Vec::new();
-        let mut read_dir = tokio::fs::read_dir(&local_path)
-            .await
-            .map_err(|_| StatusCode::NoSuchFile)?;
-
+        let mut read_dir = match tokio::fs::read_dir(&local_path).await {
+            Ok(read_dir) => read_dir,
+            Err(e) => {
+                self.log_error(format!("OPENDIR {} failed: {}", path, e));
+                return Err(StatusCode::NoSuchFile);
+            }
+        };
         if let Ok(metadata) = tokio::fs::metadata(&local_path).await {
             let attrs = FileAttributes::from(&metadata);
             dir_entries.push(File::new(".", attrs.clone()));
@@ -537,6 +598,12 @@ impl russh_sftp::server::Handler for SftpSession {
 
         let handle_str = format!("d_{}", self.next_handle_id);
         self.next_handle_id += 1;
+
+        self.log_info(format!(
+            "OPENDIR {} ({} entries)",
+            path,
+            dir_entries.len()
+        ));
 
         self.dirs.insert(
             handle_str.clone(),
@@ -569,6 +636,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let metadata = tokio::fs::metadata(&local_path)
             .await
             .map_err(|_| StatusCode::NoSuchFile)?;
+        self.log_info(format!("STAT {}", path));
         Ok(Attrs {
             id,
             attrs: FileAttributes::from(&metadata),
@@ -580,6 +648,7 @@ impl russh_sftp::server::Handler for SftpSession {
         let metadata = tokio::fs::symlink_metadata(&local_path)
             .await
             .map_err(|_| StatusCode::NoSuchFile)?;
+        self.log_info(format!("LSTAT {}", path));
         Ok(Attrs {
             id,
             attrs: FileAttributes::from(&metadata),
@@ -626,10 +695,7 @@ impl russh_sftp::server::Handler for SftpSession {
 
         self.files.insert(handle_str.clone(), file);
 
-        self.state.write().add_log(LogMessage::info(format!(
-            "SFTP: Opened file '{}'",
-            filename
-        )));
+        self.log_info(format!("OPEN {} (flags: {:?})", filename, pflags));
 
         Ok(Handle {
             id,
@@ -698,10 +764,7 @@ impl russh_sftp::server::Handler for SftpSession {
             _ => StatusCode::Failure,
         })?;
 
-        self.state.write().add_log(LogMessage::info(format!(
-            "SFTP: Removed file '{}'",
-            filename
-        )));
+        self.log_info(format!("REMOVE {}", filename));
 
         Ok(ok_status(id))
     }
@@ -721,10 +784,7 @@ impl russh_sftp::server::Handler for SftpSession {
                 _ => StatusCode::Failure,
             })?;
 
-        self.state.write().add_log(LogMessage::info(format!(
-            "SFTP: Created directory '{}'",
-            path
-        )));
+        self.log_info(format!("MKDIR {}", path));
 
         Ok(ok_status(id))
     }
@@ -739,10 +799,7 @@ impl russh_sftp::server::Handler for SftpSession {
                 _ => StatusCode::Failure,
             })?;
 
-        self.state.write().add_log(LogMessage::info(format!(
-            "SFTP: Removed directory '{}'",
-            path
-        )));
+        self.log_info(format!("RMDIR {}", path));
 
         Ok(ok_status(id))
     }
@@ -763,10 +820,7 @@ impl russh_sftp::server::Handler for SftpSession {
                 _ => StatusCode::Failure,
             })?;
 
-        self.state.write().add_log(LogMessage::info(format!(
-            "SFTP: Renamed '{}' to '{}'",
-            oldpath, newpath
-        )));
+        self.log_info(format!("RENAME {} -> {}", oldpath, newpath));
 
         Ok(ok_status(id))
     }

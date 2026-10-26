@@ -56,6 +56,8 @@ struct ServerEntry {
     server_type: ServerType,
     state: SharedState,
     shutdown_tx: Option<mpsc::Sender<()>>,
+    /// Handle of the background task running `start_server`.
+    task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl ServerEntry {
@@ -69,6 +71,7 @@ impl ServerEntry {
             server_type,
             state: Arc::new(RwLock::new(crate::servers::ServerState::new(config))),
             shutdown_tx: None,
+            task: None,
         }
     }
 
@@ -207,7 +210,23 @@ impl OServersApp {
 
     fn start_server(&mut self, idx: usize) {
         let entry = &mut self.servers[idx];
-        if entry.is_running() {
+
+        // Do not start the same server twice. The Start button stays visible
+        // while the server is `Starting`, so a second click used to spawn a
+        // duplicate task whose shutdown could overwrite the status of the
+        // newer, actually running task (UI showed "Stopped" with the service
+        // still listening). If the previous task already exited (e.g. it
+        // failed), starting again is allowed.
+        let previous_task_finished = entry
+            .task
+            .as_ref()
+            .map(|task| task.is_finished())
+            .unwrap_or(true);
+        if matches!(
+            entry.status(),
+            ServerStatus::Running | ServerStatus::Starting
+        ) && !previous_task_finished
+        {
             return;
         }
 
@@ -215,7 +234,11 @@ impl OServersApp {
         entry.shutdown_tx = Some(shutdown_tx);
         let state = entry.state.clone();
 
-        match entry.server_type {
+        // Reflect the state change immediately, so the UI cannot start the
+        // same server twice before the background task gets scheduled.
+        state.write().status = ServerStatus::Starting;
+
+        let task = match entry.server_type {
             ServerType::Http => {
                 let config = HttpConfig {
                     port: self.http_port.parse().unwrap_or(7777),
@@ -229,7 +252,7 @@ impl OServersApp {
                 };
                 self.runtime.spawn(async move {
                     let _ = http::start_server(config, state, shutdown_rx).await;
-                });
+                })
             }
             ServerType::Ftp => {
                 let config = FtpConfig {
@@ -246,7 +269,7 @@ impl OServersApp {
                 };
                 self.runtime.spawn(async move {
                     let _ = ftp::start_server(config, state, shutdown_rx).await;
-                });
+                })
             }
             ServerType::Tftp => {
                 let config = TftpConfig {
@@ -256,7 +279,7 @@ impl OServersApp {
                 };
                 self.runtime.spawn(async move {
                     let _ = tftp::start_server(config, state, shutdown_rx).await;
-                });
+                })
             }
             ServerType::Ssh => {
                 let config = SshConfig {
@@ -267,9 +290,11 @@ impl OServersApp {
                 };
                 self.runtime.spawn(async move {
                     let _ = ssh::start_server(config, state, shutdown_rx).await;
-                });
+                })
             }
-        }
+        };
+
+        entry.task = Some(task);
     }
 
     fn stop_server(&mut self, idx: usize) {

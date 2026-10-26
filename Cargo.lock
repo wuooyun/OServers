@@ -3655,6 +3655,7 @@ dependencies = [
  "home",
  "libunftp",
  "parking_lot",
+ "percent-encoding",
  "rand 0.10.1",
  "rfd",
  "russh",

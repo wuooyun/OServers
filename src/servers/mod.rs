@@ -62,6 +62,14 @@ impl LogMessage {
         }
     }
 
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self {
+            timestamp: chrono::Local::now(),
+            level: LogLevel::Warning,
+            message: message.into(),
+        }
+    }
+
     pub fn error(message: impl Into<String>) -> Self {
         Self {
             timestamp: chrono::Local::now(),
@@ -96,6 +104,13 @@ pub struct ServerState {
     pub status: ServerStatus,
     pub logs: Vec<LogMessage>,
     pub config: ServerConfig,
+    /// Generation counter, incremented each time a server run is started.
+    ///
+    /// A server task may only update the status while it still owns the
+    /// current generation. This prevents a stale task (e.g. one that is
+    /// shutting down after the user restarted the server) from overwriting
+    /// the status of the newer run.
+    pub run_id: u64,
 }
 
 impl ServerState {
@@ -104,19 +119,75 @@ impl ServerState {
             status: ServerStatus::Stopped,
             logs: Vec::new(),
             config,
+            run_id: 0,
         }
     }
 
+    /// Begin a new server run and mark the server as starting.
+    ///
+    /// Returns the generation id of the new run.
+    pub fn begin_run(&mut self, message: impl Into<String>) -> u64 {
+        self.run_id = self.run_id.wrapping_add(1);
+        self.status = ServerStatus::Starting;
+        self.add_log(LogMessage::info(message));
+        self.run_id
+    }
+
+    /// Returns true if `run_id` is still the current run.
+    pub fn is_active_run(&self, run_id: u64) -> bool {
+        self.run_id == run_id
+    }
+
     pub fn add_log(&mut self, msg: LogMessage) {
+        // Mirror the message to the tracing subscriber so that per-client
+        // operations are also visible on the console / in log files.
+        match msg.level {
+            LogLevel::Info => tracing::info!(target: "oservers", "{}", msg.message),
+            LogLevel::Warning => tracing::warn!(target: "oservers", "{}", msg.message),
+            LogLevel::Error => tracing::error!(target: "oservers", "{}", msg.message),
+        }
+
         self.logs.push(msg);
-        // Keep only last 100 messages
-        if self.logs.len() > 100 {
+        // Keep only the last MAX_LOG_ENTRIES messages
+        if self.logs.len() > MAX_LOG_ENTRIES {
             self.logs.remove(0);
         }
     }
 }
 
+/// Maximum number of log entries kept in memory per server.
+///
+/// Client operations (every HTTP request, FTP command, SFTP operation and
+/// TFTP transfer) are logged individually, so the buffer needs to be large
+/// enough to stay useful.
+pub const MAX_LOG_ENTRIES: usize = 1000;
+
 pub type SharedState = Arc<RwLock<ServerState>>;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stale_run_cannot_overwrite_status() {
+        let mut state = ServerState::new(ServerConfig::default());
+
+        let stale_run = state.begin_run("starting server");
+        let current_run = state.begin_run("restarting server");
+
+        assert!(!state.is_active_run(stale_run));
+        assert!(state.is_active_run(current_run));
+
+        // A task from the previous run finishing after a restart must not
+        // clobber the status of the run that is actually serving.
+        state.status = ServerStatus::Running;
+        if state.is_active_run(stale_run) {
+            state.status = ServerStatus::Stopped;
+        }
+
+        assert_eq!(state.status, ServerStatus::Running);
+    }
+}
 
 /// Server control handle
 #[allow(dead_code)]
