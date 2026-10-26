@@ -133,12 +133,40 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
 
+      # Each artifact keeps its own directory, whose name is the desired asset
+      # name (e.g. oservers-v1.0.0-windows-x86_64.exe). The file inside is the
+      # plain binary name, so rename it while collecting the assets.
       - name: Prepare release assets
         run: |
-          chmod +x artifacts/* || true
-          ls -la artifacts/
+          set -euo pipefail
+          mkdir -p release
+          for dir in artifacts/*/; do
+            name="$(basename "$dir")"
+            for file in "$dir"*; do
+              [ -f "$file" ] || continue
+              cp "$file" "release/$name"
+            done
+          done
+          chmod +x release/* || true
+          ls -la release/
+
+      # Re-running a release must not leave outdated files attached.
+      - name: Remove stale assets from previous runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" --json assets --jq '.assets[].name' > assets.txt 2>/dev/null; then
+            while IFS= read -r name; do
+              [ -n "$name" ] || continue
+              if [ ! -f "release/$name" ]; then
+                echo "Removing stale asset: $name"
+                gh release delete-asset "$TAG" "$name" -y
+              fi
+            done < assets.txt
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
